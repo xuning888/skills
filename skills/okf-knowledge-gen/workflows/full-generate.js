@@ -193,13 +193,13 @@ phase('Generate');
 
 const TEMPLATE_PATHS = `
 模板文件路径：
-- BusinessEntity: /Users/xuning/.claude/skills/okf-knowledge-gen/templates/business-entity.md
-- BusinessConcept: /Users/xuning/.claude/skills/okf-knowledge-gen/templates/business-concept.md
-- Service: /Users/xuning/.claude/skills/okf-knowledge-gen/templates/service-overview.md
-- DataFlow: /Users/xuning/.claude/skills/okf-knowledge-gen/templates/data-flow.md
-- Infrastructure: /Users/xuning/.claude/skills/okf-knowledge-gen/templates/infrastructure.md
-- ArchitectureDecision: /Users/xuning/.claude/skills/okf-knowledge-gen/templates/architecture-decision.md
-- Reference: /Users/xuning/.claude/skills/okf-knowledge-gen/templates/reference.md`;
+- BusinessEntity: ～/.claude/skills/okf-knowledge-gen/templates/business-entity.md
+- BusinessConcept: ～/.claude/skills/okf-knowledge-gen/templates/business-concept.md
+- Service: ～/.claude/skills/okf-knowledge-gen/templates/service-overview.md
+- DataFlow: ～/.claude/skills/okf-knowledge-gen/templates/data-flow.md
+- Infrastructure: ～/.claude/skills/okf-knowledge-gen/templates/infrastructure.md
+- ArchitectureDecision: ~/.claude/skills/okf-knowledge-gen/templates/architecture-decision.md
+- Reference: ~/.claude/skills/okf-knowledge-gen/templates/reference.md`;
 
 const PATH_RULES = `
 文件写入路径规则：
