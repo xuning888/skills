@@ -16,6 +16,10 @@ export const meta = {
 };
 
 const REPO = args?.repo || '.';
+const OUT = (() => {
+  const raw = args?.output || 'knowledge-catalog';
+  return raw.startsWith('/') ? raw : `${REPO}/${raw}`;
+})();
 const SINCE = args?.since || 'HEAD~1';
 
 // ============================================================
@@ -25,7 +29,7 @@ const SINCE = args?.since || 'HEAD~1';
 phase('Detect Changes');
 
 const DETECT_PROMPT = `执行命令获取变更文件列表：cd ${REPO} && git diff ${SINCE} --name-only
-将变更文件列表输出到 knowledge-catalog/.work/incremental-changed-files.txt，每行一个路径。`;
+将变更文件列表输出到 ${OUT}/.work/incremental-changed-files.txt，每行一个路径。`;
 
 await agent(DETECT_PROMPT, { label: 'detect', phase: 'Detect Changes' });
 log('Phase 1 变更检测完成');
@@ -40,8 +44,8 @@ const IMPACT_PROMPT = `你是影响面分析 agent。
 
 ## 目标仓库：${REPO}
 
-1. Read knowledge-catalog/.work/incremental-changed-files.txt 获取变更文件
-2. Read knowledge-catalog/references/plan.json 获取上次全量生成的规划
+1. Read ${OUT}/.work/incremental-changed-files.txt 获取变更文件
+2. Read ${OUT}/references/plan.json 获取上次全量生成的规划
 
 ## 影响面规则
 | 文件类型 | 受影响概念 |
@@ -57,7 +61,7 @@ const IMPACT_PROMPT = `你是影响面分析 agent。
 变更文件 -> 路径前缀匹配 plan.json module -> 该 module 相关的所有 concepts
 
 ## 输出
-写入 knowledge-catalog/.work/incremental-impact.json：
+写入 ${OUT}/.work/incremental-impact.json：
 {
   "affected_concepts": [{ "concept_id": "..", "change_type": "..", "changed_files": [".."], "action": "regenerate" }],
   "new_modules": [],
@@ -78,18 +82,18 @@ const REGEN_PROMPT = `你是增量文档生成 agent。
 
 ## 目标仓库：${REPO}
 
-1. Read knowledge-catalog/.work/incremental-impact.json 获取受影响概念列表
-2. Read knowledge-catalog/references/plan.json 获取概念详情
+1. Read ${OUT}/.work/incremental-impact.json 获取受影响概念列表
+2. Read ${OUT}/references/plan.json 获取概念详情
 3. Read project-profile.md 获取项目背景
 4. 按 P0->P1->P2 顺序处理每个受影响概念：
    a. Read 对应模板文件：
-      - BusinessEntity: ~/.claude/skills/okf-knowledge-gen/templates/business-entity.md
-      - BusinessConcept: ~/.claude/skills/okf-knowledge-gen/templates/business-concept.md
-      - Service: ~/.claude/skills/okf-knowledge-gen/templates/service-overview.md
-      - DataFlow: ~/.claude/skills/okf-knowledge-gen/templates/data-flow.md
-      - Infrastructure: ~/.claude/skills/okf-knowledge-gen/templates/infrastructure.md
-      - ArchitectureDecision: ~/.claude/skills/okf-knowledge-gen/templates/architecture-decision.md
-      - Reference: ~/.claude/skills/okf-knowledge-gen/templates/reference.md
+      - BusinessEntity: /Users/xuning/.claude/skills/okf-knowledge-gen/templates/business-entity.md
+      - BusinessConcept: /Users/xuning/.claude/skills/okf-knowledge-gen/templates/business-concept.md
+      - Service: /Users/xuning/.claude/skills/okf-knowledge-gen/templates/service-overview.md
+      - DataFlow: /Users/xuning/.claude/skills/okf-knowledge-gen/templates/data-flow.md
+      - Infrastructure: /Users/xuning/.claude/skills/okf-knowledge-gen/templates/infrastructure.md
+      - ArchitectureDecision: /Users/xuning/.claude/skills/okf-knowledge-gen/templates/architecture-decision.md
+      - Reference: /Users/xuning/.claude/skills/okf-knowledge-gen/templates/reference.md
    b. Read code_evidence 源码文件
    c. 如文档已存在，先 Read 现有文档再增量更新
    d. 用 Write 写入更新后的文档
@@ -108,19 +112,19 @@ const V1_INCR_PROMPT = `你是断链检测 agent。
 
 ## 目标仓库：${REPO}
 
-1. Read knowledge-catalog/.work/incremental-impact.json 获取受影响概念
+1. Read ${OUT}/.work/incremental-impact.json 获取受影响概念
 2. 检查这些概念文档中的 Markdown 链接有效性
-3. 输出到 knowledge-catalog/.work/incremental-verify-links.json`;
+3. 输出到 ${OUT}/.work/incremental-verify-links.json`;
 
 const V4_INCR_PROMPT = `你是 index 更新 agent。
 
 ## 目标仓库：${REPO}
 
-1. Read knowledge-catalog/references/plan.json
-2. Read knowledge-catalog/.work/incremental-impact.json
+1. Read ${OUT}/references/plan.json
+2. Read ${OUT}/.work/incremental-impact.json
 3. 更新受影响的 index.md 文件
-4. 更新 knowledge-catalog/log.md（追加 IncrementalUpdate 条目，记录触发 commit 和受影响概念）
-5. 更新 knowledge-catalog/references/type-registry.md（如有新 type）`;
+4. 更新 ${OUT}/log.md（追加 IncrementalUpdate 条目，记录触发 commit 和受影响概念）
+5. 更新 ${OUT}/references/type-registry.md（如有新 type）`;
 
 await parallel([
   () => agent(V1_INCR_PROMPT, { label: 'V1-links', phase: 'Verify' }),

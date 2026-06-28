@@ -54,24 +54,31 @@ git status  # 确认没有未提交的变更
 
 ## 运行
 
+### 配置参数
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `repo` | 目标代码仓库路径 | 当前工作目录 |
+| `output` | 知识库输出目录（相对于 repo） | `knowledge-catalog` |
+
 ### 全量生成
 
 ```
-/okf-knowledge-gen:full
+/okf-knowledge-gen:full repo=/path/to/project output=docs/kb
 ```
 
 执行 4 个 Phase：
 1. **Discover** — 4 个并行 agent 扫描代码仓库（模块结构、领域实体、业务流程、基础设施）
 2. **Plan** — 合成概念清单 + Type 分配 + 链接预案
-3. **Generate** — 按优先级分层 pipeline 生成 OKF 文档
+3. **Generate** — 4 个并行 agent 按优先级生成 OKF 文档
 4. **Verify** — 断链检测、一致性校验、实现断言复验、index 生成
 
-**预计耗时**：20 万行仓库约 20-40 分钟。
+**预计耗时**：20 万行仓库约 25-35 分钟。
 
 ### 增量更新
 
 ```
-/okf-knowledge-gen:incremental --since HEAD~5
+/okf-knowledge-gen:incremental repo=/path/to/project output=docs/kb --since HEAD~5
 ```
 
 只重新生成自指定 commit 以来受影响的文档。基于 `git diff` 计算影响面。
