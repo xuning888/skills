@@ -87,13 +87,13 @@ const REGEN_PROMPT = `你是增量文档生成 agent。
 3. Read project-profile.md 获取项目背景
 4. 按 P0->P1->P2 顺序处理每个受影响概念：
    a. Read 对应模板文件：
-      - BusinessEntity: /Users/xuning/.claude/skills/okf-knowledge-gen/templates/business-entity.md
-      - BusinessConcept: /Users/xuning/.claude/skills/okf-knowledge-gen/templates/business-concept.md
-      - Service: /Users/xuning/.claude/skills/okf-knowledge-gen/templates/service-overview.md
-      - DataFlow: /Users/xuning/.claude/skills/okf-knowledge-gen/templates/data-flow.md
-      - Infrastructure: /Users/xuning/.claude/skills/okf-knowledge-gen/templates/infrastructure.md
-      - ArchitectureDecision: /Users/xuning/.claude/skills/okf-knowledge-gen/templates/architecture-decision.md
-      - Reference: /Users/xuning/.claude/skills/okf-knowledge-gen/templates/reference.md
+      - BusinessEntity: ～/.claude/skills/okf-knowledge-gen/templates/business-entity.md
+      - BusinessConcept: ～/.claude/skills/okf-knowledge-gen/templates/business-concept.md
+      - Service: ～/.claude/skills/okf-knowledge-gen/templates/service-overview.md
+      - DataFlow: ～/.claude/skills/okf-knowledge-gen/templates/data-flow.md
+      - Infrastructure: ～/.claude/skills/okf-knowledge-gen/templates/infrastructure.md
+      - ArchitectureDecision: ～/.claude/skills/okf-knowledge-gen/templates/architecture-decision.md
+      - Reference: ～/.claude/skills/okf-knowledge-gen/templates/reference.md
    b. Read code_evidence 源码文件
    c. 如文档已存在，先 Read 现有文档再增量更新
    d. 用 Write 写入更新后的文档

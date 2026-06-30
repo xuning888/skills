@@ -147,3 +147,13 @@ Skill 包含以下模板文件，可在 Skill 安装目录找到：
 | index.md | templates/index.md | 目录索引约定 |
 | log.md | templates/log.md | 变更日志约定 |
 | type-registry | templates/type-registry.md | Type 声明约定 |
+
+## workflows 脚本
+
+你无需自行实现agent编排。
+
+Skill 包含以下脚本文件, 可以在Skill 安装目录找到:
+
+全量扫描: workflows/full-generate.js
+
+增量生成: workflows/incremental.js
