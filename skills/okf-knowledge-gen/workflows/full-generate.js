@@ -24,64 +24,63 @@ const OUT = (() => {
 })();
 
 // ============================================================
-// Phase 1: Discover — 4+1 并行探索 agent
+// Phase 1: Discover — 数据面 + 控制面并行探索
+// 数据面（A2'）与控制面（A3_SURFACE）独立运行，互不依赖
 // ============================================================
 
 phase('Discover');
 
-const A1_PROMPT = `你是模块扫描 agent。扫描代码仓库的物理结构和模块拓扑。
+// A2' — 数据面：穷举所有概念，输出纯事实记录（不做 Type 判定，不做过滤）
+const A2_PROMPT = `你是数据面概念挖掘 agent。穷举代码仓库中所有类、接口、枚举、Proto 消息和数据库表定义，记录纯事实——不做业务判断、不做 Type 分类、不做过滤。
 
 ## 目标仓库：${REPO}
 
-## 策略：穷举 -> 深读
+## 策略：穷举 -> 深读确认
 
 ### 穷举层
-1. find 完整目录树（排除 node_modules/ target/ build/ .git/ vendor/ __pycache__/ venv/ .idea/）
-2. find 所有构建文件：pom.xml build.gradle go.mod Cargo.toml package.json Makefile
-3. find 所有 proto/IDL/GraphQL schema/SQL migration 文件
-4. 对每个顶级目录统计文件数和估算行数
+1. grep 所有 class/interface/enum/record 定义（Java: ^\s*(public\s+)?(class|interface|enum|record)\s+\w+）
+2. grep ORM 注解定义（@Entity @Table @Document @TableName）
+3. grep 所有 protobuf message/enum 定义
+4. grep 所有 DTO/VO/Request/Response 类名模式
+5. find 所有 SQL migration 文件，提取 CREATE TABLE 语句
+6. 不按引用数截断——记录所有类，不做 top-N 筛选
+7. 不做后缀黑名单过滤——技术设施类和业务类一视同仁记录
 
-### 深读层（不超过 30 个文件）
-1. 读所有构建文件 -> 提取模块名、依赖、语言版本
-2. 每模块抽样 1-2 个代表性源码文件
-3. 读入口文件（main/Application 类）
+### 深读确认层
+1. 对每个类：Read 文件头（类声明 + 字段 + 方法签名），确认 attributes 完整
+2. 记录 called_by 关系：grep 该类名被哪些文件引用
+3. 记录 calls 关系：从代码中提取该类调用了哪些外部方法
 
-## 输出：将结果写入 ${OUT}/.work/discover-a1-modules.json
+## 输出：将结果写入 ${OUT}/.work/discover-data-concepts.json
 {
-  "modules": [{ "name": "..", "path": "..", "language": "java/go/..", "estimated_lines": N, "summary": "一句话", "build_file": ".." }],
-  "dependency_graph": [{ "from": "A", "to": "B", "type": "compile" }],
-  "key_files": { "build_files": [], "entry_points": [], "proto_files": [], "sql_migrations": [] },
-  "organization": "mono-repo|multi-project",
-  "layering_convention": "分层描述"
-}`;
+  "classes": [
+    {
+      "name": "短类名",
+      "fqn": "完整限定名",
+      "location": "模块/src/.../File.java:行号",
+      "annotations": ["@Service", "@Entity"],
+      "extends": "父类名或空",
+      "implements": ["接口列表"],
+      "attributes": [{"name": "字段名", "type": "字段类型", "annotations": ["@Column"]}],
+      "called_by": [{"method": "调用方法名", "location": "文件:行号"}],
+      "calls": [{"method": "被调用方法名", "location": "文件:行号"}]
+    }
+  ],
+  "proto_messages": [
+    {"name": "消息名", "location": "文件:行号", "fields": [{"name": "字段名", "type": "类型", "number": N}]}
+  ],
+  "sql_tables": [
+    {"name": "表名", "location": "migration文件:行号", "columns": [{"name": "列名", "type": "类型", "nullable": true}]}
+  ],
+  "total_classes_found": N,
+  "note": "全量穷举。不做 type 预判，不做摘要，不做过滤。每个记录必须有精确 code_evidence。"
+}
 
-const A2_PROMPT = `你是实体提取 agent。从代码中提取领域概念。
-
-## 目标仓库：${REPO}
-
-## 策略：穷举 -> 分组 -> 深读
-
-### 穷举层
-1. grep class/interface/enum/record 定义
-2. grep ORM 注解（@Entity @Table @Document @TableName）
-3. grep protobuf message 定义
-4. grep DTO/VO/Request/Response 类名模式
-
-### 分组层
-1. 按 package 分组 -> 实体聚类
-2. 按引用次数排序 -> top-50 核心概念
-3. 过滤纯技术类：Builder Config Util Exception Constants Helper Factory
-
-### 深读层（不超过 50 个文件）
-1. 引用最多的 top-20 实体类
-2. 所有 Proto message 定义
-3. 枚举类
-
-## 输出：将结果写入 ${OUT}/.work/discover-a2-entities.json
-{
-  "entities": [{ "name": "..", "type_hint": "BusinessEntity", "module": "..", "summary": "..", "attributes": ["name:type"], "code_evidence": ["文件:行号"], "referenced_by_count": N, "has_state": true }],
-  "business_concepts": [{ "name": "..", "type_hint": "BusinessConcept", "module": "..", "summary": "..", "is_enum": true, "code_evidence": ["文件:行号"] }]
-}`;
+## 关键原则
+- 不做 Type 判定（不区分 entity/concept/infra），Plan 阶段统一处理
+- 不做 summary 摘要——防止信息丢失，Plan agent 基于原始事实做判断
+- called_by/calls 只记录精确文件:行号位置
+- 如果项目过大导致上下文不足，优先保证每个模块的类记录完整，不得私自截断`;
 
 const A3_SURFACE_PROMPT = `你是流程追踪 agent（穷举阶段）。找出所有 API 入口和消息消费者。
 
@@ -117,81 +116,219 @@ const A4_PROMPT = `你是配置与依赖扫描 agent。识别外部依赖和运�
   "deployment_topology": [{ "service": "..", "ports": [], "depends_on_infra": [], "evidence": [] }]
 }`;
 
-// Phase 1: 4 个 agent 并行扫描
+// Phase 1: 3 个 agent 并行扫描（数据面 A2' + 控制面入口 A3_SURFACE + 配置 A4）
 await parallel([
-  () => agent(A1_PROMPT, { label: 'A1-modules', phase: 'Discover' , model: 'sonnet'}),
-  () => agent(A2_PROMPT, { label: 'A2-entities', phase: 'Discover', model: 'opus' }),
+  () => agent(A2_PROMPT, { label: 'A2-concept-mining', phase: 'Discover', model: 'opus' }),
   () => agent(A3_SURFACE_PROMPT, { label: 'A3-surface', phase: 'Discover', model: 'opus' }),
   () => agent(A4_PROMPT, { label: 'A4-config', phase: 'Discover', model: 'sonnet' }),
 ]);
 
-// A3 第二阶段：读取 A2 输出做分级深追
-const A3_DEEP_PROMPT = `你是流程追踪 agent（深追阶段）。读取实体列表和入口清单，分级追踪关键流程。
+// A3 第二阶段：控制面深追——枚举所有入口，追踪到 IO 边界（DB/MQ/RPC/文件）
+// 独立于数据面运行，只依赖 A3_SURFACE 入口清单
+const A3_DEEP_PROMPT = `你是控制面流程追踪 agent（深追阶段）。不依赖数据面（A2'）的输出，独立枚举所有入口并追踪到 IO 边界。
 
 ## 目标仓库：${REPO}
 
 ## 步骤
-1. Read ${OUT}/.work/discover-a2-entities.json 获取核心实体列表
-2. Read ${OUT}/.work/discover-a3-surface.json 获取入口清单
-3. 按分级规则追踪：
-   - 第一级（深追 5 层）：handler 包含核心实体名 + 状态变更（POST/PUT/DELETE/发送）
-   - 第二级（追 2 层）：handler 包含核心实体名但仅查询（GET）
-   - 第三级（跳过）：/health /metrics /actuator 静态资源
-4. 追踪方式：优先 Read handler 函数体 -> grep 被调用方法名 -> LSP callHierarchy 如可用
-5. 标注每个断言：已验证（实际追踪到代码）vs 推断（基于命名约定）
+1. Read ${OUT}/.work/discover-a3-surface.json 获取入口清单
+2. 对每个入口追踪调用链，终止于 IO 边界：
+   - db_read / db_write：到达数据库插入/更新/查询/删除操作
+   - mq_publish / mq_consume：到达消息队列发送或消费
+   - rpc_call：到达 gRPC/HTTP 外部服务调用
+   - file_read / file_write：到达文件系统读写
+3. 记录每个步骤：方法签名、入参类型、出参类型、分支条件
+4. 标注每个步骤的验证状态：已验证（实际 Read 到源码）vs 推断
 
-## 输出：将结果写入 ${OUT}/.work/discover-a3-deep.json
+## 追踪规则
+- 所有入口一视同仁，不按实体名匹配筛选，不预设追踪深度
+- 终止条件为到达 IO 边界，而非固定步数
+- 记录 IO 边界处的精确目标（DB 表名、MQ topic、RPC 服务名、文件路径）
+- 不跳过任何入口——/health /metrics 这类基础设施入口也记录，但标注为 technical
+
+## 输出：将结果写入 ${OUT}/.work/discover-control-flows.json
 {
-  "flow_patterns": [{ "name": "..", "description": "..", "representative_cases": [] }],
-  "key_flows": [{ "name": "..", "entry_point": "文件:行号", "trace": [{"step":1,"location":"..","method":"..","verified":true}], "data_flow": [{"from":"..","to":"..","via":".."}], "branch_points": [] }],
-  "assertions": [{ "claim": "..", "status": "已验证|推断", "evidence": "文件:行号" }]
+  "flows": [
+    {
+      "id": "flow-001",
+      "entry": "POST /api/message/send",
+      "entry_location": "MessageController.java:42",
+      "entry_method": "sendMessage(SendRequest): SendResponse",
+      "entry_type": "http",
+      "trace": [
+        {
+          "step": 1,
+          "location": "MessageServiceImpl.java:88",
+          "method": "handleSend(SendRequest): void",
+          "params": ["userId: Long", "content: String", "sessionType: int"],
+          "return": "void",
+          "calls": ["SessionService.getSession", "MsgStore.persist"],
+          "branch_condition": "if (sessionType == C2C)",
+          "verified": true
+        }
+      ],
+      "io_boundary": [
+        {"type": "db_write", "target": "MySQL", "table": "t_message", "location": "MsgStore.java:156"},
+        {"type": "mq_publish", "target": "Kafka", "topic": "MESSAGE_SEND", "location": "KafkaProducer.java:33"}
+      ]
+    }
+  ],
+  "total_entries_found": N,
+  "total_flows_traced": N
 }`;
 
-await agent(A3_DEEP_PROMPT, { label: 'A3-deep', phase: 'Discover', model: 'opus' });
-log('Phase 1 Discover 完成');
+await agent(A3_DEEP_PROMPT, { label: 'A3-deep-control', phase: 'Discover', model: 'opus' });
+log('Phase 1 Discover 完成（数据面 + 控制面）');
 
 // ============================================================
-// Phase 2: Plan — 合成 plan.json
+// Phase 2: Plan — 3 agent（Plan-Data + Plan-Control 并行 → Plan-Merge 交叉合并）
 // ============================================================
 
 phase('Plan');
 
-const PLAN_PROMPT = `你是规划 agent。合成四个探索 agent 的发现为统一概念生成计划。
+// Plan-Data：数据面合成——基于 A2' 纯事实做 Type 分配和概念去重
+const PLAN_DATA_PROMPT = `你是数据面合成 agent。基于 Discover 阶段纯事实做 Type 分配、概念去重和属性提炼。
 
 ## 目标仓库：${REPO}
 
 ## 输入
 Read 以下文件：
-- ${OUT}/.work/discover-a1-modules.json
-- ${OUT}/.work/discover-a2-entities.json
-- ${OUT}/.work/discover-a3-deep.json
-- ${OUT}/.work/discover-a4-config.json
+- ${OUT}/.work/discover-data-concepts.json（A2' 穷举的所有类/Proto/SQL 事实）
 - project-profile.md（项目背景和术语表）
 
-## 处理
+## 职责
 
-1. 概念去重合并：A1 模块 + A2 实体/概念 + A3 流程概念 + A4 外部系统
-2. Type 分配：entity->BusinessEntity, concept->BusinessConcept, module->Service, flow->DataFlow, infra->Infrastructure, 策略/设计->ArchitectureDecision
-3. 优先级：P0=核心实体+服务, P1=流程+基础设施, P2=决策+引用, P3=index+log+type-registry
-4. 链接预案：基于依赖图和概念引用
-5. 交叉验证：检查 A1 有模块但 A2 无概念、A2 有实体但 A3 无流程等盲区
-6. Profile 差异：profile 声明但代码未发现 vs 代码发现但 profile 未声明
+1. **逐类判定 Type**
+   - 有状态 + 有唯一标识 + 有生命周期 → BusinessEntity
+   - 抽象规则/机制/策略/枚举 → BusinessConcept
+   - 对应一个独立部署模块 → Service
+   - 外部中间件/存储/基础设施组件 → Infrastructure
+   - 不匹配以上任何类型但有业务含义 → Reference
+   - 判定依据必须来自代码事实（annotations、attributes、called_by/calls），不得凭空猜测
+
+2. **概念去重**
+   - 同一业务实体在不同模块出现（DTO 层 vs Domain 层 vs Proto 层），按 FQN 前缀和 attributes 相似度聚类归并
+   - 去重后保留最完整的属性集合和最接近业务核心的 location
+
+3. **属性提炼**
+   - 从多个 source 文件中提取该概念的完整属性集合
+   - attributes_summary 列出关键属性名:类型对
+
+4. **Profile 差异**
+   - profile 声明但代码未发现的概念 → MISSING_IN_CODE
+   - 代码发现但 profile 未声明的概念 → NOT_IN_PROFILE
+
+## 输出
+将结果写入 ${OUT}/.work/plan-data.json：
+{
+  "concepts": [{ "id": "..", "name": "..", "type": "BusinessEntity|BusinessConcept|Service|Infrastructure|Reference", "module": "..", "code_evidence": ["文件:行号"], "attributes_summary": ["字段名:类型"], "fqn": ".." }],
+  "profile_diff": [{"level":"MISSING_IN_CODE|NOT_IN_PROFILE","field":"..","value":".."}],
+  "types_summary": { "BusinessEntity": {"count":N}, "BusinessConcept": {"count":N}, "Service": {"count":N}, "Infrastructure": {"count":N}, "Reference": {"count":N} }
+}`;
+
+// Plan-Control：控制面合成——流程归一化 + 实体映射 + IO→Infra 发现
+const PLAN_CONTROL_PROMPT = `你是控制面合成 agent。基于 A3_DEEP' 的流程追踪结果做流程归一化、实体映射和 Infrastructure 发现。
+
+## 目标仓库：${REPO}
+
+## 输入
+Read 以下文件：
+- ${OUT}/.work/discover-control-flows.json（A3_DEEP' 的完整流程追踪+IO边界）
+- project-profile.md（项目背景和术语表）
+
+## 职责
+
+1. **流程归一化**
+   - 同一业务路径的不同入口（HTTP vs gRPC vs MQ 消息消费）归一化为同一个 DataFlow
+   - 判断依据：trace 中操作的核心数据是否相同、IO 边界是否相同
+   - 保留所有入口的 entry_locations
+
+2. **流程→实体映射**
+   - 从每步 trace 的 params/return/calls 中提取该流程操作的数据实体名
+   - 不做类型判断（留给 Plan-Merge 交叉验证），只记录实体名和所在 trace step
+   - operated_entities 列表供 Plan-Merge 碰撞检测使用
+
+3. **IO 边界→Infrastructure 发现**
+   - 从所有 flow 的 io_boundary 中汇总去重
+   - 自动为每个 IO 资源创建 Infrastructure 概念候选：DB 表 → Infrastructure、MQ topic → Infrastructure、外部 RPC 服务 → Infrastructure
+   - 每个 Infrastructure 候选带 io_boundary 来源（代码证据）
+
+## 输出
+将结果写入 ${OUT}/.work/plan-control.json：
+{
+  "normalized_flows": [{ "flow_id": "..", "name": "..", "normalized_entries": ["文件:行号"], "tracked_trace": "完整的归一化 trace", "io_boundary": [...], "operated_entities": ["实体名"] }],
+  "discovered_infrastructure": [{ "name": "..", "type": "database|mq|cache|external_rpc", "io_source": "文件:行号", "used_by_flows": ["flow_id"] }]
+}`;
+
+// Plan-Merge：交叉合并——碰撞检测 + 优先级 + 链接预案 + file_manifest
+const PLAN_MERGE_PROMPT = `你是交叉合并 agent。合并数据面和控制面的结果，做碰撞检测、优先级排序、链接预案，并为每个概念生成文件读取清单。
+
+## 目标仓库：${REPO}
+
+## 输入
+Read 以下文件：
+- ${OUT}/.work/plan-data.json（数据面：概念+Type+属性）
+- ${OUT}/.work/plan-control.json（控制面：流程+实体映射+Infra 候选）
+- project-profile.md
+
+## 职责
+
+1. **碰撞检测**
+   - Plan-Data 有但 Plan-Control operated_entities 未涉及的实体 → 可能是死代码、纯配置数据、或控制面漏了 → 标记为 cross_check_result
+   - Plan-Control operated_entities 有但 Plan-Data 没发现的实体 → 数据面漏网之鱼 → 从 operated_entities 反推创建新概念
+   - 控制面 discovered_infrastructure 是否已被数据面覆盖 → 未覆盖的标记为自动发现
+
+2. **Type 最终分配**
+   - 合并 Plan-Data 的 type（Entity/Concept/Service/Infra/Reference）和 Plan-Control 的 flow/infra
+   - 流程归一化结果 → DataFlow type
+   - 控制面发现的 Infrastructure → Infrastructure type
+   - 被控制面确认"有流程操作"的实体 → 保持原 type
+   - 策略/设计相关的决策 → ArchitectureDecision type
+
+3. **优先级 P0-P3**
+   - P0：核心实体 + 核心服务（被多个 flow 操作或被 profile 明确标记为核心）
+   - P1：DataFlow + Infrastructure（被流程使用的）
+   - P2：ArchitectureDecision + Reference
+   - P3：index + log + type-registry
+
+4. **链接预案**
+   - 基于 called_by/calls 关系 + trace 构建概念间 outgoing_links
+   - 实体 ↔ 流程（实体被哪些 DataFlow 操作）
+   - 流程 ↔ Service（流程经过哪些服务模块）
+   - Infrastructure ↔ 使用者（哪些 Service/Flow 使用了该 Infra）
+
+5. **文件读取清单 file_manifest**
+   为每个概念生成精确的文件:行号读取清单：
+   - BusinessEntity/Concept：code_evidence 中的实体定义文件 + called_by 最多的 3 个引用文件
+   - Service：入口类 + 构建文件 + 配置文件（不超过 10 个）
+   - DataFlow：完整 trace 所有步骤的 location + IO boundary location（15+ 个）
+   - Infrastructure：配置文件 + 至少 1 个使用方源码
+   - 按文件数分 load_category：light(<5), medium(5-15), heavy(>15)
 
 ## 输出
 将 plan.json 写入 ${OUT}/references/plan.json：
 {
-  "concepts": [{ "id": "..", "name": "..", "type": "..", "priority": "P0|P1|P2|P3", "module": "..", "code_evidence": ["文件:行号"], "outgoing_links": [".."], "attributes_summary": [".."] }],
+  "concepts": [{ "id": "..", "name": "..", "type": "..", "priority": "P0|P1|P2|P3", "module": "..", "code_evidence": ["文件:行号"], "outgoing_links": ["concept_id"], "attributes_summary": ["字段名:类型"], "file_manifest": { "total_files": N, "load_category": "light|medium|heavy", "files": [{"path": "相对路径", "lines": "行号范围", "reason": "读取原因"}] } }],
   "types": { "BusinessEntity": {"count":N}, "BusinessConcept": {"count":N}, "Service": {"count":N}, "DataFlow": {"count":N}, "Infrastructure": {"count":N}, "ArchitectureDecision": {"count":N}, "Reference": {"count":N} },
   "cross_check_results": [{"rule":"..","target":"..","action":".."}],
   "profile_diff": [{"level":"MISSING_IN_CODE|NOT_IN_PROFILE","field":"..","value":".."}],
   "output_directory": "${OUT}/"
-}`;
+}
 
-await agent(PLAN_PROMPT, { label: 'Plan', phase: 'Plan', model: 'opus' });
-log('Phase 2 Plan 完成');
+## 关键原则
+- plan.json 是 Generate 阶段的唯一输入，必须完整准确
+- file_manifest 是 Generate agent 的文件读取清单——精确到行号，让它不需要猜测
+- 新增字段 file_manifest 是纯增量，不得删除或重命名任何现有字段（incremental.js 依赖它们）`;
+
+// Plan-Data 和 Plan-Control 并行，Plan-Merge 串行等待两者
+await parallel([
+  () => agent(PLAN_DATA_PROMPT, { label: 'Plan-Data', phase: 'Plan', model: 'opus' }),
+  () => agent(PLAN_CONTROL_PROMPT, { label: 'Plan-Control', phase: 'Plan', model: 'opus' }),
+]);
+await agent(PLAN_MERGE_PROMPT, { label: 'Plan-Merge', phase: 'Plan', model: 'opus' });
+log('Phase 2 Plan 完成（Data + Control → Merge）');
 
 // ============================================================
-// Phase 3: Generate — 4 个 agent 并行生成，各负责一层优先级
+// Phase 3: Generate — 按文件读取负载分组生成（load_category: light/medium/heavy）
 // ============================================================
 
 phase('Generate');
@@ -226,83 +363,78 @@ const FORMAT_RULES = `
 - 不确定的地方标注（待确认），不要编造
 
 ## 质量要求（关键）
-- DataFlow：对每个流程，必须 Read 至少 3 个关键 handler/controller 源码文件，追踪方法调用链。完整链路 ASCII 图 + 各环节职责表每个步骤必须有具体的类名和方法名
-- Service：对每个服务，必须 Read 入口类 + 至少 2 个核心 handler/controller 源码 + 配置文件
+- 优先按 file_manifest.files 精确读取——Plan 已经计算好了每个概念需要读哪些文件
+- 如果 file_manifest 不完整，用 grep/read 补充，但必须标注"manifest 外补充"
+- DataFlow：必须 Read manifest 中所有 trace location + io_boundary location，画出完整 ASCII 链路图
+- Service：必须 Read 入口类 + 至少 2 个核心 handler/controller 源码 + 配置文件
 - BusinessEntity：必须 Read 实体类源码 + Proto message 定义（如适用）`;
 
-// Agent 1: P0 概念（核心实体 + 核心服务，约 16 个概念）
-const GEN_P0_PROMPT = `你是 P0 文档生成 agent。为最高优先级概念生成 OKF 文档。这些是知识库的基石，其他文档会链向它们，必须高质量。
+// GEN_LIGHT：轻量概念（<5 个文件，BusinessEntity/BusinessConcept/Reference，8-10个/agent）
+const GEN_LIGHT_PROMPT = `你是轻量文档生成 agent。处理 file_manifest.load_category = "light" 的概念。
+生成 BusinessEntity、BusinessConcept、Reference 类型文档——文件读取量小，但需要准确提炼领域语义。
 
 ## 目标仓库：${REPO}
 
 ## 步骤
 1. Read ${OUT}/references/plan.json 获取概念清单
 2. Read project-profile.md 获取项目背景和术语表
-3. 只处理 priority = "P0" 的概念
-4. 对每个概念：Read 对应模板 -> Read code_evidence 源码 -> 基于实际代码 Write 文档
+3. 只处理 file_manifest.load_category = "light" 的概念
+4. 对每个概念：
+   a. Read 对应模板
+   b. 按 file_manifest.files 精确读取每个文件（Plan 已经算好了）
+   c. 基于实际代码和模板 Write 文档
+5. 处理 8-10 个概念后如还有剩余，记录在 ${OUT}/.work/gen-light-remaining.txt 中
 ${TEMPLATE_PATHS}
 ${PATH_RULES}
 ${FORMAT_RULES}`;
 
-// Agent 2: P1 概念（BusinessEntity + BusinessConcept + Service，约 15 个）
-const GEN_P1A_PROMPT = `你是 P1 领域文档生成 agent。为中等优先级的实体、概念和服务生成 OKF 文档。
+// GEN_MEDIUM：中量概念（5-15 个文件，Service/Infrastructure/ArchitectureDecision，4-6个/agent）
+const GEN_MEDIUM_PROMPT = `你是中量文档生成 agent。处理 file_manifest.load_category = "medium" 的概念。
+生成 Service、Infrastructure、ArchitectureDecision 类型文档——需要读配置文件和多个源码文件。
 
 ## 目标仓库：${REPO}
 
 ## 步骤
-1. Read ${OUT}/references/plan.json
-2. 只处理 priority = "P1" 且 type 为 BusinessEntity/BusinessConcept/Service 的概念
-3. 对每个概念：Read 对应模板 -> Read code_evidence 源码 -> Write 文档
+1. Read ${OUT}/references/plan.json 获取概念清单
+2. 只处理 file_manifest.load_category = "medium" 的概念
+3. 对每个概念：
+   a. Read 对应模板
+   b. 按 file_manifest.files 精确读取每个文件
+   c. 对 Service：Read 入口类 + 构建文件 + 配置文件
+   d. 对 Infrastructure：Read 配置文件 + 至少 1 个使用方源码
+   e. 基于实际代码和模板 Write 文档
+4. 处理 4-6 个概念后如还有剩余，记录在 ${OUT}/.work/gen-medium-remaining.txt 中
 ${TEMPLATE_PATHS}
 ${PATH_RULES}
 ${FORMAT_RULES}`;
 
-// Agent 3: P1 概念（DataFlow + Infrastructure，约 19 个，最关键——需要深追代码）
-const GEN_P1B_PROMPT = `你是 P1 流程与基础设施文档生成 agent。DataFlow 文档需要最深度的代码追踪。
+// GEN_HEAVY：重量概念（15+ 个文件，DataFlow，1-3个/agent——最深度的代码追踪）
+const GEN_HEAVY_PROMPT = `你是重量文档生成 agent。处理 file_manifest.load_category = "heavy" 的概念。
+生成 DataFlow 类型文档——需要完整追踪跨服务调用链，每个流程涉及 15+ 个源码文件。
 
 ## 目标仓库：${REPO}
 
 ## 步骤
-1. Read ${OUT}/references/plan.json
-2. 只处理 priority = "P1" 且 type 为 DataFlow/Infrastructure 的概念
-3. 对每个 DataFlow：
-   - Read project-profile.md 了解业务背景
-   - Read 流程入口源码（handler/controller）
-   - grep 追踪被调用的方法，Read 每个关键方法的源码文件
-   - 至少追踪 5 层调用链，画出完整 ASCII 链路图
-   - 各环节职责表每步必须有：服务名、类名、方法名、关键操作描述
-   - 标注实现断言：已验证（实际追踪到）vs 推断
-4. 对每个 Infrastructure：Read 配置文件 + Read 至少 1 个使用方的源码
+1. Read ${OUT}/references/plan.json 获取概念清单
+2. Read project-profile.md 了解业务背景
+3. 只处理 file_manifest.load_category = "heavy" 的概念
+4. 对每个 DataFlow：
+   a. Read data-flow.md 模板
+   b. 按 file_manifest.files 读取所有 trace location + io_boundary location
+   c. 画出完整 ASCII 链路图（标注服务名、类名、方法名）
+   d. 各环节职责表每步必须有：服务名、类名、方法名、入出参类型、关键操作描述
+   e. 标注实现断言：已验证（已在 manifest 文件中追踪到）vs 推断
+   f. 如果 manifest 不完整，grep/read 补充追踪，标注"manifest 外补充: 文件:行号"
+5. 处理 1-3 个概念后如还有剩余，记录在 ${OUT}/.work/gen-heavy-remaining.txt 中
 ${TEMPLATE_PATHS}
 ${PATH_RULES}
 ${FORMAT_RULES}`;
 
-// Agent 4: P2+P3 概念（ArchitectureDecision + Reference + index/log/type-registry）
-const GEN_P2_PROMPT = `你是 P2/P3 文档生成 agent。为架构决策、引用和索引生成文档。
-
-## 目标仓库：${REPO}
-
-## 步骤
-1. Read ${OUT}/references/plan.json
-2. 处理 priority = "P2" 和 "P3" 的概念
-3. 对 ArchitectureDecision：Read 相关源码 + project-profile.md，按 ADR 格式写
-4. 对 Reference：简洁描述外部资源及其与项目关系
-5. 生成 ${OUT}/index.md（根索引，按领域分组）
-6. 生成各级子目录 index.md
-7. 生成 ${OUT}/references/type-registry.md
-8. 生成/更新 ${OUT}/log.md
-${TEMPLATE_PATHS}
-${PATH_RULES}
-${FORMAT_RULES}
-
-index.md 和 log.md 无 frontmatter`;
-
-// 4 个 agent 并行生成
+// 3 个 agent 并行生成，按负载度分组（取代原来的 P0/P1/P2 优先级分组）
 await parallel([
-  () => agent(GEN_P0_PROMPT, { label: 'gen-P0', phase: 'Generate' , model: 'opus'}),
-  () => agent(GEN_P1A_PROMPT, { label: 'gen-P1-entities', phase: 'Generate', model: 'sonnet' }),
-  () => agent(GEN_P1B_PROMPT, { label: 'gen-P1-flows', phase: 'Generate', model: 'opus' }),
-  () => agent(GEN_P2_PROMPT, { label: 'gen-P2-indexes', phase: 'Generate', model: 'opus' }),
+  () => agent(GEN_LIGHT_PROMPT, { label: 'gen-light', phase: 'Generate', model: 'sonnet' }),
+  () => agent(GEN_MEDIUM_PROMPT, { label: 'gen-medium', phase: 'Generate', model: 'sonnet' }),
+  () => agent(GEN_HEAVY_PROMPT, { label: 'gen-heavy', phase: 'Generate', model: 'opus' }),
 ]);
 
 // 交叉链接：等所有文档生成完后补充链接
