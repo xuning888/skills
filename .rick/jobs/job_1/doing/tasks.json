@@ -1,0 +1,42 @@
+{
+  "version": "1.0",
+  "created_at": "2026-07-19T22:51:56.192105+08:00",
+  "updated_at": "2026-07-19T23:04:39.439088+08:00",
+  "tasks": [
+    {
+      "task_id": "task1",
+      "task_name": "创建 okf-knowledge-read 技能目录结构和 SKILL.md 骨架及核心流程指令",
+      "status": "completed",
+      "dependencies": null,
+      "attempts": 1,
+      "error": "",
+      "created_at": "2026-07-19T22:51:56.192105+08:00",
+      "updated_at": "2026-07-19T23:04:39.439088+08:00"
+    },
+    {
+      "task_id": "task2",
+      "task_name": "编写辅助章节：内置 Type 定义兜底、使用示例、常见问题和输出格式规范",
+      "status": "failed",
+      "dependencies": [
+        "task1"
+      ],
+      "attempts": 0,
+      "error": "task failed after 5 attempts: failed to generate test script: test generation agent failed: exec: no command",
+      "created_at": "2026-07-19T22:51:56.192105+08:00",
+      "updated_at": "2026-07-19T23:03:41.871368+08:00"
+    },
+    {
+      "task_id": "task3",
+      "task_name": "端到端验证：用真实 OKF 知识库测试技能完整流程",
+      "status": "failed",
+      "dependencies": [
+        "task1",
+        "task2"
+      ],
+      "attempts": 0,
+      "error": "task failed after 5 attempts: failed to generate test script: test generation agent failed: exec: no command",
+      "created_at": "2026-07-19T22:51:56.192105+08:00",
+      "updated_at": "2026-07-19T23:03:51.881601+08:00"
+    }
+  ]
+}
