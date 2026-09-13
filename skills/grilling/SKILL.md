@@ -30,8 +30,8 @@ description: 在任何需要追问用户的时候使用
 
 ## 核心指令
 
-Interview me relentlessly about every aspect of this plan until we reach a shared understanding.
-Model the plan as a design tree. Traverse it layer by layer — at each layer, identify the modules and their pipeline (call relationships), then loop asking questions until the layer meets its termination condition before descending to the next layer.
+Interview me relentlessly about every aspect of this requirement until we reach a shared understanding.
+Model the requirement as a design tree. Traverse it layer by layer — at each layer, identify the modules and their pipeline (call relationships), then loop asking questions until the layer meets its termination condition before descending to the next layer.
 Ask all questions for the current layer at once. For each question, provide your recommended answer.
 If a question can be answered by exploring the codebase, explore the codebase instead of asking.
 
